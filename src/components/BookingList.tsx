@@ -14,7 +14,7 @@ export default function BookingList() {
             <div className="text-sm text-gray-600">{b.userEmail}</div>
           </div>
           <div>
-            <button onClick={() => deleteBooking(b.id)} className="text-red-600">Cancelar</button>
+            <button onClick={() => deleteBooking(b.id)} className="text-red-900 font-bold">Cancelar</button>
           </div>
         </li>
       ))}
