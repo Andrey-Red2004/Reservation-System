@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useBookings } from '../state/bookingsContext';
 
 export default function NewBookingForm({ slot, onClose }: { slot: {start:string,end:string}; onClose: () => void }) {
@@ -6,8 +7,6 @@ export default function NewBookingForm({ slot, onClose }: { slot: {start:string,
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
-
-  // Nuevo: para mostrar la segunda ventana
   const [showConfirm, setShowConfirm] = useState(false);
 
   const validateForm = () => {
@@ -27,7 +26,24 @@ export default function NewBookingForm({ slot, onClose }: { slot: {start:string,
       return;
     }
 
-    // Si todo está bien → mostrar ventana de confirmación
+    const selectDate = new Date(slot.start);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    selectDate.setHours(0, 0, 0, 0);
+    if (selectDate < today) {
+      setError('No se pueden elegir fechas ni horas pasadas');
+      return;
+    }
+
+    const selectedDateTime = new Date(slot.start);
+    const now = new Date();
+    const oneHourFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+
+    if (selectedDateTime < oneHourFromNow) {
+      setError('Las reservas deben hacerse con al menos 1 hora de anticipación');
+      return;
+    }
+
     setShowConfirm(true);
   };
 
@@ -53,12 +69,9 @@ export default function NewBookingForm({ slot, onClose }: { slot: {start:string,
     hour12: true
   });
 
-  // ---------- UI ----------
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black/30">
-      
-      {/* Si NO se confirma aún, mostrar formulario */}
-      {!showConfirm ? (
+    <>
+      <div className="fixed inset-0 flex items-center justify-center bg-black/30">
         <div className="bg-white p-4 rounded shadow-md w-96">
           <h3 className="text-lg font-bold mb-3">Reservar {startTime}</h3>
           
@@ -92,34 +105,84 @@ export default function NewBookingForm({ slot, onClose }: { slot: {start:string,
             </button>
           </div>
         </div>
-      ) : (
+      </div>
 
-        // --------- VENTANA DE CONFIRMACIÓN ---------
-        <div className="bg-white p-6 rounded shadow-lg w-80 border-t-8 border-blue-500">
-          <h3 className="text-lg font-bold mb-4 text-center">Confirmación</h3>
+      {/* Portal para la ventana de confirmación */}
+      {showConfirm && createPortal(
+  <div 
+    className="fixed top-0 left-0 right-0 bottom-0 flex items-center justify-center" 
+    style={{ 
+      zIndex: 99999, 
+      backgroundColor: 'rgba(0, 0, 0, 1)',
+      position: 'fixed'
+    }}
+  >
+    <div 
+      className="bg-white rounded-xl shadow-2xl"
+      style={{
+        width: '250px',
+        padding: '32px',
+        border: '3px solid #e5e7eb',
+        position: 'relative',
+        zIndex: 100000
+      }}
+    >
+      <h3 className="text-xl font-bold mb-6 text-center text-gray-800">
+        Confirmación
+      </h3>
 
-          <p className="text-center text-gray-700 mb-4">
-            Desea agendar su cita a las<br />
-            <span className="text-xl font-bold">{startTime}</span>
-          </p>
+      <div className="text-center mb-8">
+        <p className="text-gray-700 mb-3">
+          ¿Desea agendar su cita a las
+        </p>
+        <p className="text-4xl font-bold text-blue-600">
+          {startTime}?
+        </p>
+      </div>
 
-          <div className="flex gap-2">
-            <button 
-              onClick={() => setShowConfirm(false)} 
-              className="flex-1 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 font-semibold"
-            >
-              Cancelar
-            </button>
+      <div className="flex gap-8">
+        <button 
+          onClick={() => setShowConfirm(false)} 
+          style={{
+            flex: 1,
+            backgroundColor: '#dc2626',
+            color: 'white',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            fontWeight: '600',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '16px'
+          }}
+          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#b91c1c'}
+          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
+        >
+          Cancelar
+        </button>
 
-            <button 
-              onClick={confirmBooking} 
-              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 font-semibold"
-            >
-              Ok
-            </button>
-          </div>
-        </div>
-      )}
+        <button 
+          onClick={confirmBooking} 
+          style={{
+            flex: 1,
+            backgroundColor: '#2563eb',
+            color: 'white',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            fontWeight: '600',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '16px'
+          }}
+          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
+          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
+        >
+          Ok
+        </button>
+      </div>
     </div>
+  </div>,
+  document.body
+)}
+    </>
   );
 }
