@@ -3,10 +3,14 @@ import { useState } from 'react';
 import { makeSlotsForDay } from '../utils/time';
 import { useBookings } from '../state/bookingsContext';
 import NewBookingForm from '../components/NewBookingForm';
+import EditBookingForm from '../components/EditBookingForm';
+import BookingList from '../components/BookingList';
+import type { Reservation } from '../types';
 
 export default function BookingsPage() {
   const [date, setDate] = useState<string>(''); // Inicia vacío
   const [selectedSlot, setSelectedSlot] = useState<{start:string,end:string}|null>(null);
+  const [editingBooking, setEditingBooking] = useState<Reservation | null>(null);
   const { bookings } = useBookings();
   
   const slots = date ? makeSlotsForDay(new Date(date)) : [];
@@ -15,6 +19,19 @@ export default function BookingsPage() {
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Reseervas</h1>
       
+      {editingBooking && (
+        <div className="mb-4 p-3 bg-blue-100 border border-blue-400 rounded">
+          <p className="font-semibold">Modificando reserva de: {editingBooking.userName}</p>
+          <p className="text-sm">Seleccione una nueva fecha y hora para la cita</p>
+          <button 
+            onClick={() => { setEditingBooking(null); setSelectedSlot(null); setDate(''); }}
+            className="mt-2 text-sm bg-gray-500 text-white px-3 py-1 rounded hover:bg-gray-600"
+          >
+            Cancelar modificación
+          </button>
+        </div>
+      )}
+
       <div className="mb-4">
         <label className="block mb-2">
           <h2 className="text-lg font-semibold mb-2">Seleccione la fecha de su cita:</h2>
@@ -77,9 +94,32 @@ export default function BookingsPage() {
         </div>
       )}
 
-      {selectedSlot && (
+      {selectedSlot && !editingBooking && (
         <NewBookingForm slot={selectedSlot} onClose={() => setSelectedSlot(null)} />
       )}
+
+      {selectedSlot && editingBooking && (
+        <EditBookingForm 
+          booking={editingBooking}
+          slot={selectedSlot}
+          onClose={() => {
+            setSelectedSlot(null);
+            setEditingBooking(null);
+            setDate('');
+          }}
+        />
+      )}
+
+      {/* Lista de reservas */}
+      <div className="mt-8">
+        <h2 className="text-xl font-bold mb-4">Mis Reservas</h2>
+        <BookingList onEdit={(booking) => {
+          setEditingBooking(booking);
+          // Pre-seleccionar la fecha actual de la reserva
+          const bookingDate = new Date(booking.start);
+          setDate(bookingDate.toISOString().split('T')[0]);
+        }} />
+      </div>
     </div>
   );
 }

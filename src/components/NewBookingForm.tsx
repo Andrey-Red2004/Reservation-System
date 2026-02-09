@@ -47,8 +47,8 @@ export default function NewBookingForm({ slot, onClose }: { slot: {start:string,
     setShowConfirm(true);
   };
 
-  const confirmBooking = () => {
-    const res = createBooking({ 
+  const confirmBooking = async () => {
+    const res = await createBooking({ 
       userName: name, 
       userEmail: email, 
       start: slot.start, 

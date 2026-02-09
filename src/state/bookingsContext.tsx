@@ -1,66 +1,169 @@
-// src/state/bookingsContext.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Reservation } from '../types';
-import { v4 as uuidv4 } from 'uuid';
 import { hasOverlapWithExisting } from '../utils/time';
+import { bookingAPI } from '../services/api';
 
 type BookingsContextValue = {
   bookings: Reservation[];
-  createBooking: (data: Omit<Reservation, 'id' | 'status'>) => { ok: boolean; error?: string; booking?: Reservation };
-  deleteBooking: (id: string) => void;
-  load: () => void;
+  loading: boolean;
+  createBooking: (data: Omit<Reservation, 'id' | 'status'>) => Promise<{ ok: boolean; error?: string; booking?: Reservation }>;
+  cancelBooking: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  updateBooking: (id: string, newData: Omit<Reservation, 'id' | 'status'>) => Promise<{ ok: boolean; error?: string }>;
+  deleteBooking: (id: string) => Promise<void>;
+  load: () => Promise<void>;
 };
 
-const STORAGE_KEY = 'poc_bookings_v1';
 const BookingsContext = createContext<BookingsContextValue | undefined>(undefined);
 
 export function BookingsProvider({ children }: { children: React.ReactNode }) {
   const [bookings, setBookings] = useState<Reservation[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => { load(); }, []);
 
-  function load() {
+  async function load() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      setBookings(raw ? JSON.parse(raw) : []);
-    } catch {
+      setLoading(true);
+      const data = await bookingAPI.getAll({ status: 'confirmed' });
+      setBookings(data);
+    } catch (error) {
+      console.error('Error al cargar reservas:', error);
       setBookings([]);
+    } finally {
+      setLoading(false);
     }
   }
 
-  function persist(list: Reservation[]) {
-    setBookings(list);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  async function createBooking(data: Omit<Reservation, 'id' | 'status'>): Promise<{ ok: boolean; error?: string; booking?: Reservation }> {
+    // Validaciones frontend
+    if (new Date(data.end) <= new Date(data.start)) {
+      return { ok: false, error: 'Fin debe ser posterior al inicio.' };
+    }
+
+    // Verificar solapamientos con reservas existentes
+    const tempBooking: Reservation = { 
+      ...data, 
+      id: 'temp', 
+      status: 'pending' 
+    };
+    
+    if (hasOverlapWithExisting(tempBooking, bookings)) {
+      return { ok: false, error: 'El horario está ocupado.' };
+    }
+
+    try {
+      const newBooking = await bookingAPI.create({
+        userName: data.userName,
+        userEmail: data.userEmail,
+        start: data.start,
+        end: data.end,
+        notes: data.notes,
+        resourceId: data.resourceId,
+      });
+      
+      // Actualizar estado local
+      setBookings(prev => [...prev, newBooking]);
+      
+      return { ok: true, booking: newBooking };
+    } catch (error: any) {
+      return { ok: false, error: error.message };
+    }
   }
 
-  function createBooking(data: Omit<Reservation, 'id' | 'status'>) {
-  const booking: Reservation = { ...data, id: uuidv4(), status: 'confirmed' };
-
-  if (new Date(booking.end) <= new Date(booking.start)) {
-    return { ok: false, error: 'Fin debe ser posterior al inicio.' };
+  async function cancelBooking(id: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      await bookingAPI.cancel(id);
+      
+      // Actualizar estado local
+      setBookings(prev => prev.map(b =>
+        b.id === id ? { ...b, status: 'cancelled' as const } : b
+      ));
+      
+      return { ok: true };
+    } catch (error: any) {
+      return { ok: false, error: error.message };
+    }
   }
 
-  // Aquí usamos el estado actual dentro del setState
-  if (hasOverlapWithExisting(booking, bookings)) {
-    return { ok: false, error: 'El horario está ocupado.' };
+  async function updateBooking(id: string, newData: Omit<Reservation, 'id' | 'status'>): Promise<{ ok: boolean; error?: string }> {
+    // Validar email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (newData.userEmail && !emailRegex.test(newData.userEmail)) {
+      return { ok: false, error: 'Email inválido' };
+    }
+
+    // Validar nombre
+    if (!newData.userName.trim()) {
+      return { ok: false, error: 'El nombre no puede estar vacío' };
+    }
+
+    // Validar fechas
+    if (new Date(newData.end) <= new Date(newData.start)) {
+      return { ok: false, error: 'Fin debe ser posterior al inicio.' };
+    }
+
+    // Validar fecha pasada
+    const selectedDate = new Date(newData.start);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    selectedDate.setHours(0, 0, 0, 0);
+    if (selectedDate < today) {
+      return { ok: false, error: 'No se pueden elegir fechas pasadas' };
+    }
+
+    // Validar anticipación de 1 hora
+    const selectedDateTime = new Date(newData.start);
+    const now = new Date();
+    const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+    if (selectedDateTime < oneHourFromNow) {
+      return { ok: false, error: 'Las reservas deben hacerse con al menos 1 hora de anticipación' };
+    }
+
+    // Verificar solapamientos excluyendo la reserva actual
+    const tempBooking: Reservation = { 
+      ...newData, 
+      id, 
+      status: 'confirmed' 
+    };
+    
+    if (hasOverlapWithExisting(tempBooking, bookings, id)) {
+      return { ok: false, error: 'El horario está ocupado.' };
+    }
+
+    try {
+      const updated = await bookingAPI.update(id, {
+        userName: newData.userName,
+        userEmail: newData.userEmail,
+        start: newData.start,
+        end: newData.end,
+        notes: newData.notes,
+      });
+      
+      // Actualizar estado local
+      setBookings(prev => prev.map(b => 
+        b.id === id ? updated : b
+      ));
+      
+      return { ok: true };
+    } catch (error: any) {
+      return { ok: false, error: error.message };
+    }
   }
 
-  setBookings(prev => {
-    const next = [...prev, booking];
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    return next;
-  });
-
-  return { ok: true, booking };
-}
-
-  function deleteBooking(id: string) {
-    const next = bookings.filter(b => b.id !== id);
-    persist(next);
+  async function deleteBooking(id: string): Promise<void> {
+    try {
+      await bookingAPI.delete(id);
+      
+      // Actualizar estado local
+      setBookings(prev => prev.filter(b => b.id !== id));
+    } catch (error) {
+      console.error('Error al eliminar reserva:', error);
+      throw error;
+    }
   }
 
   return (
-    <BookingsContext.Provider value={{ bookings, createBooking, deleteBooking, load }}>
+    <BookingsContext.Provider value={{ bookings, loading, createBooking, cancelBooking, updateBooking, deleteBooking, load }}>
       {children}
     </BookingsContext.Provider>
   );

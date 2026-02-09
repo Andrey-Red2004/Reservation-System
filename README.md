@@ -1,4 +1,6 @@
-<<<<<<< HEAD
+# Reservation-System
+a system where reservations can be made and appointments scheduled
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
@@ -72,7 +74,3 @@ export default defineConfig([
   },
 ])
 ```
-=======
-# Reservation-System
-a system where reservations can be made and appointments scheduled
->>>>>>> 249bfd42ceaf6b5a20f422b573991fb00725a67b
